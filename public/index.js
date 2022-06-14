@@ -484,31 +484,69 @@ canvas.on('path:created',handleCreateNewLine);        // Добавление н
 canvas.on('mouse:wheel', handleMouseWheel);           // Реагируем на масштабирование
 
 
-let info = document.getElementById('info');
+// let info = document.getElementById('info');
 
-canvas.on({
-    'touch:gesture': function() {
-      var text = document.createTextNode(' Gesture ');
-      info.insertBefore(text, info.firstChild);
+// canvas.on({
+//     'touch:gesture': function() {
+//       var text = document.createTextNode(' Gesture ');
+//       info.insertBefore(text, info.firstChild);
+//     },
+//     'touch:drag': function() {
+//       var text = document.createTextNode(' Dragging ');
+//       info.insertBefore(text, info.firstChild);
+//     },
+//     'touch:orientation': function() {
+//       var text = document.createTextNode(' Orientation ');
+//       info.insertBefore(text, info.firstChild);
+//     },
+//     'touch:shake': function() {
+//       var text = document.createTextNode(' Shaking ');
+//       info.insertBefore(text, info.firstChild);
+//     },
+//     'touch:longpress': function() {
+//       var text = document.createTextNode(' Longpress ');
+//       info.insertBefore(text, info.firstChild);
+//     }
+//   });
+
+let pausePanning;
+
+  canvas.on({
+    'touch:gesture': function(e) {
+        if (e.e.touches && e.e.touches.length == 2) {
+            pausePanning = true;
+            var point = new fabric.Point(e.self.x, e.self.y);
+            if (e.self.state == "start") {
+                zoomStartScale = self.canvas.getZoom();
+            }
+            var delta = zoomStartScale * e.self.scale;
+            self.canvas.zoomToPoint(point, delta);
+            pausePanning = false;
+        }
     },
-    'touch:drag': function() {
-      var text = document.createTextNode(' Dragging ');
-      info.insertBefore(text, info.firstChild);
+    'object:selected': function() {
+        pausePanning = true;
     },
-    'touch:orientation': function() {
-      var text = document.createTextNode(' Orientation ');
-      info.insertBefore(text, info.firstChild);
+    'selection:cleared': function() {
+        pausePanning = false;
     },
-    'touch:shake': function() {
-      var text = document.createTextNode(' Shaking ');
-      info.insertBefore(text, info.firstChild);
-    },
-    'touch:longpress': function() {
-      var text = document.createTextNode(' Longpress ');
-      info.insertBefore(text, info.firstChild);
+    'touch:drag': function(e) {
+        if (pausePanning == false && undefined != e.e.layerX && undefined != e.e.layerY) {
+            currentX = e.e.layerX;
+            currentY = e.e.layerY;
+            xChange = currentX - lastX;
+            yChange = currentY - lastY;
+
+            if( (Math.abs(currentX - lastX) <= 50) && (Math.abs(currentY - lastY) <= 50)) {
+                var delta = new fabric.Point(xChange, yChange);
+                canvas.relativePan(delta);
+            }
+
+            lastX = e.e.layerX;
+            lastY = e.e.layerY;
+        }
     }
-  });
-
+});
 
 // Получаем какие-либо данные от сервера
 
