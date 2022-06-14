@@ -3,6 +3,7 @@
     top: 20px;
     right: 30px;
     width: 170px;
+    z-index: 10;
 }
 
 .grid-panel__title {

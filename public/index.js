@@ -6,32 +6,16 @@ const figureSelection = document.querySelector('.settings-panel__grid-figure');
 const toolPanelList = document.querySelector('.tool-panel__list');
 const inputChangeColor = document.querySelector('.sub-tool-panel__item-list-color-selection > input');
 const subToolPanel = inputChangeColor.closest('.sub-tool-panel__change-color');
-
-
-
 const buttonNoGrid = document.querySelector('.grid-panel__item-no-grid');
 const buttonUsualGrid = document.querySelector('.grid-panel__item-usual-grid');
 const buttonTriangularGrid = document.querySelector('.grid-panel__item-triangular-grid');
+const buttonText = document.querySelector('.tool-panel__item-button-text');
+const textSettings = document.querySelector('.text-settings');
 
-buttonNoGrid.addEventListener('click', () => {
-    canvas.setBackgroundColor(null, canvas.renderAll.bind(canvas))
-})
-buttonUsualGrid.addEventListener('click', () => {
-    canvas.setBackgroundColor({
-        source: pathUsualGrid,
-        repeat: 'repeat',
-        scaleX: 1,
-        scaleY: 1
-    }, canvas.renderAll.bind(canvas));
-})
-buttonTriangularGrid.addEventListener('click', () => {
-    canvas.setBackgroundColor({
-        source: pathTriangularGrid,
-        repeat: 'repeat',
-        scaleX: 1,
-        scaleY: 1
-    }, canvas.renderAll.bind(canvas));
-})
+const buttonClearBoard = document.querySelector('.logo-menu__item-clear-board');
+
+let isDown = false;
+let canvasCenter;
 
 
 
@@ -44,21 +28,47 @@ const handleClickOpenInputChangeColor = () => {
 const handleClickCloseInputChangeColor = (event) => {
     if (event.target !== inputChangeColor) {
         subToolPanel.classList.remove('sub-tool-panel_visible');
+    } else if(event.target !== fontColorInput) {
+        fontColorListWrapper.classList.remive('active');
+    } else {
+
     }
 }
+
+
+import {
+    hideTextEditPanel
+} from './scripts/add-text.js';
+
+
 
 window.addEventListener('click', handleClickCloseInputChangeColor);
 inputChangeColor.addEventListener('click', handleClickOpenInputChangeColor);
 
-
-
 const socket = io();
-
 const canvas = new fabric.Canvas(document.getElementById('canvasId'), {
         fireMiddleClick: true,
         isDrawingMode: true,
     },
 );
+
+let isRendering = false;
+const render = canvas.renderAll.bind(canvas);
+
+canvas.renderAll = () => {
+    if (!isRendering) {
+        isRendering = true;
+        requestAnimationFrame(() => {
+            render();
+            isRendering = false;
+        });
+    }
+};
+
+// fabric.util.requestAnimFrame(function render() {
+//     canvas.renderAll();
+//     fabric.util.requestAnimFrame(render);
+// });
 
 const pathUsualGrid = "./images/grids/usual-grid.svg";
 const pathTriangularGrid = "./images/grids/triangular-grid.svg";
@@ -77,13 +87,39 @@ canvas.freeDrawingBrush.color = '#00aeff';
 
 let isCursorMove = false;
 
-canvas.setBackgroundColor({
-        source: pathUsualGrid,
-        repeat: 'repeat',
-        scaleX: 1,
-        scaleY: 1
-}, canvas.renderAll.bind(canvas));
+let canvasCenterLeft;
+let canvasCenterTop;
 
+let apparentDistanceX;
+let apparentDistanceY;
+
+
+const rect = new fabric.Rect({
+    width: 50,
+    height: 50,
+    fill: 'red',
+    left: 0,
+    top: 0,
+})
+
+canvas.add(rect);
+
+const resizeCanvas = () => {
+    canvas.setHeight(window.innerHeight);
+    canvas.setWidth(window.innerWidth);
+    apparentDistanceX = window.innerWidth/2;
+    apparentDistanceY = window.innerHeight/2;
+    canvasCenter = canvas.getCenter();
+    canvasCenterLeft = canvasCenter.left;
+    canvasCenterTop = canvasCenter.top;
+    rect.set({
+        left: canvasCenterLeft - 25,
+        top: canvasCenterTop - 25,
+    })
+    canvas.renderAll();
+}   
+
+resizeCanvas();
 
 fabric.Canvas.prototype.toggleDragMode = function () {
     const STATE_IDLE = "idle";
@@ -92,9 +128,9 @@ fabric.Canvas.prototype.toggleDragMode = function () {
     let lastClientX;
     let lastClientY;
     // Keep track of the state
-
     let deltaX;
     let deltaY;
+
     let state = STATE_IDLE;
     // We're entering dragmode
     if (isCursorMove) {
@@ -136,13 +172,31 @@ fabric.Canvas.prototype.toggleDragMode = function () {
                     deltaX = e.e.clientX - lastClientX; // смещение по оси X
                                                         // (если вниз передвигаемся, то
                                                         // это значение уменьшается иначе увеличивается)
+                    
+                    if(currentValueZoom !== 1){
+                        canvasCenterLeft = canvasCenterLeft - deltaX / currentValueZoom;
+                    } else {
+                        canvasCenterLeft = canvasCenterLeft - deltaX;
+                    }
+                    apparentDistanceX = canvasCenterLeft + window.innerWidth/2;
+                    rect.set('left', canvasCenterLeft - 25)
+                    // console.log('deltaX', canvasCenter.left)
                 }
                 if (lastClientY) {
                     deltaY = e.e.clientY - lastClientY; // смещение по оси Y
                                                         // (если влево передвигаемся, то
                                                         // это значение увеличивается иначе уменьшается)
+                    if(currentValueZoom !== 1){
+                        canvasCenterTop = canvasCenterTop - deltaY / currentValueZoom;
+                    } else {
+                        canvasCenterTop -= deltaY;
+                    }
+                    apparentDistanceY = canvasCenterTop + window.innerHeight/2;
+                    rect.set('top', canvasCenterTop - 25)
+                    // console.log('deltaY', canvasCenter.top)
                 }
                 // Update the last X and Y values
+                // console.log('canvasCenter', { left: canvasCenter.left, top: canvasCenter.top })
                 lastClientX = e.e.clientX;
                 lastClientY = e.e.clientY;
                 let delta = new fabric.Point(deltaX, deltaY);
@@ -151,6 +205,7 @@ fabric.Canvas.prototype.toggleDragMode = function () {
             }
         });
     } else {
+        // console.log(canvasCenter);
         // When we exit dragmode, we restore the previous values on all objects
         this.forEachObject(function (object) {
             object.evented = object.prevEvented !== undefined ? object.prevEvented : object.evented;
@@ -162,22 +217,23 @@ fabric.Canvas.prototype.toggleDragMode = function () {
         this.off("mouse:up");
         this.off("mouse:down");
         this.off("mouse:move");
-        this.on("mouse:move", (event) => handleMouseMovement(event))
+        removeEvents();
         // Restore selection ability on the canvas
+        canvas.renderAll();
         this.selection = true;
     }
-};
+};                                                                     // Панорамирование
 
-canvas.toObject = (function (toObject) {
-    return function () {
-        return fabric.util.object.extend(toObject.call(this), {
-            id: this.id
-        })
-    }
+// canvas.toObject = (function (toObject) {
+//     return function () {
+//         return fabric.util.object.extend(toObject.call(this), {
+//             id: this.id
+//         })
+//     }
 
-})(canvas.toObject)
+// })(canvas.toObject)
 
-const cursorUser = new fabric.Circle({
+const cursorUser = new fabric.Circle({              // Представление курсора
     radius: currentRadiusCursor,
     fill: 'red',
     left: -10,
@@ -186,13 +242,16 @@ const cursorUser = new fabric.Circle({
     originY: 'center',
 });
 
+// ------------ Функции ------------
+
 const removeEvents = () => {
     canvas.selection = false;
     canvas.off('mouse:down');
     canvas.off('mouse:up');
     canvas.off('mouse:move');
-}
-
+    canvas.on("mouse:move", (event) => handleMouseMovement(event))
+}                                                   // Удаление слушателей события mouse:down, mouse:up, 
+                                                    // mouse:move + selection = false;
 const handleMouseMovement = (event) => {
     const cursorCoordinate = canvas.getPointer(event.e);
     let data = {
@@ -200,35 +259,44 @@ const handleMouseMovement = (event) => {
         coords: cursorCoordinate,
     }
     socket.emit('cursor-data', data);
-}          // Курсор
-const resizeCanvas = () => {
-    canvas.setHeight(window.innerHeight);
-    canvas.setWidth(window.innerWidth);
-    canvas.renderAll();
-}                      // Установка холста на весь экран
+}                                                   // Курсор
+
+                                                    // Установка холста на весь экран
+const handleClearCanvas = () => {
+    canvas.clear();
+    socket.emit('canvas:clear');
+}                                                   // Очиста холста
 const handleCreateNewLine = (event) => {
     event.path.set();
     // newLine.id = canvas.size() - 1;
     socket.emit('new-picture', JSON.stringify(event.path))
-}          // Создание новой линии
+}                                                   // Создание новой линии
 const handleMouseWheel = (opt) => {
     const delta = opt.e.deltaY;
     handleScale(delta);
     scaleValue.textContent = (currentValueZoom * 100).toFixed(0) + '%';
-    canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, currentValueZoom);
-
+    const center = canvas.getCenter();
+    const centerPoint = new fabric.Point(center.left, center.top);
+    canvas.zoomToPoint(centerPoint, currentValueZoom);
+ 
     opt.e.preventDefault();
     opt.e.stopPropagation();
-}               // Масштабирование
+}                                                   // Масштабирование
 const handleScale = (delta) => {
     if(delta < 0) {
         if(currentValueZoom <= MAX_ZOOM_OUT) return;
+        // console.log(canvas.getWidth() * currentValueZoom, canvas.getHeight() * currentValueZoom)
+        // apparentDistanceX = apparentDistanceX + 
         currentValueZoom = (parseFloat(currentValueZoom) - SCALE_STEP).toFixed(2);
+        // apparentDistanceX = apparentDistanceX + apparentDistanceX * SCALE_STEP;
+        // apparentDistanceY = apparentDistanceY + apparentDistanceY * SCALE_STEP;
     } else {
         if(currentValueZoom >= MAX_ZOOM_IN) return;
         currentValueZoom = (parseFloat(currentValueZoom) + SCALE_STEP).toFixed(2);
+        // apparentDistanceX = apparentDistanceX - apparentDistanceX * SCALE_STEP;
+        // apparentDistanceY = apparentDistanceY- apparentDistanceY * SCALE_STEP;
     }
-}                  // Вспомогательная функция для масштабирования
+}                                                   // Вспомогательная функция для масштабирования
 const handleGetAllPicture = (data) => {
     if(data) {
         let buffer = JSON.parse(data);
@@ -264,7 +332,7 @@ const handleGetAllPicture = (data) => {
         // scaleValue.textContent = (currentValueZoom * 100).toFixed(0) + '%';
     }
 
-}           // Первая загрузка всех сохранённых картинок
+}                                                   // Первая загрузка всех сохранённых картинок
 const getNewPicture = (data) => {
     const dar = JSON.parse(data.coords);
     if(data.id !== socket.id) {
@@ -277,60 +345,86 @@ const getNewPicture = (data) => {
             canvas.renderAll();
         });
     }
-}                 // Получение новой картинки
+}                                                   // Получение новой картинки
+
+let cursorCoordinateOtherUsers;
+
 const getCursorData = (data) => {
     if(data.userId !== socket.id) {
+        cursorCoordinateOtherUsers = data.cursorCoordinates;
+        apparentDistanceX = window.innerWidth/2;
+        apparentDistanceY = window.innerHeight/2;
+        console.log('apparentDistance', apparentDistanceX, apparentDistanceY)
+        // console.log('cursorCoordinateOtherUsers >', cursorCoordinateOtherUsers);
+        // console.log('apparentDistanceX >', apparentDistanceX);
+        // console.log('apparentDistanceY >', apparentDistanceY);
+        //canvasCenterLeft
         canvas.add(cursorUser);
-        cursorUser.left = data.cursorCoordinates.x;
-        cursorUser.top = data.cursorCoordinates.y;
+        // Math.round(Math.abs(data.cursorCoordinates.x - canvasCenterLeft)) < apparentDistanceX
+        const center = canvas.getCenter();
+        if (
+            data.cursorCoordinates.x < (center.left + apparentDistanceX - currentRadiusCursor) && 
+            data.cursorCoordinates.x > (center.left  - apparentDistanceX + currentRadiusCursor)
+        ) {
+            cursorUser.left = data.cursorCoordinates.x;
+        }
+        if (
+            data.cursorCoordinates.y < (center.top + apparentDistanceY - currentRadiusCursor) && 
+            data.cursorCoordinates.y > (center.top - apparentDistanceY + currentRadiusCursor)
+        ) {
+            cursorUser.top = data.cursorCoordinates.y;
+        }
+    
     }
     canvas.renderAll();
-}                 // Получение координат курсора
+}                                                   // Получение координат курсора
 const handleChangeResizeWindow = (event) => {
     event.preventDefault();
     resizeCanvas();
-}     // Растягивание холста на весь экран
-const handleDownKeySpace = (event) => {
-    if (event.code === 'Space' && !event.repeat) {
-        event.preventDefault();
-        canvas.toggleDragMode();
-        canvas.isDrawingMode = false;
-        buttonCursorMove.classList.add('settings-panel__button-cursor-move_active');
-        buttonCursorMove.classList.add('settings-panel__button-cursor-move_disabled');
-        isCursorMove = true;
+}                                                   // Растягивание холста на весь экран
+const handleChangeActiveButton = (newActiveButton) => {
+    let button = newActiveButton;
+    selectedButton.classList.remove('settings-panel__button_active');
+    if(button){
+        selectedButton = button;
+        selectedButton.classList.add('settings-panel__button_active');
     }
-}           // Нажатие на пробел
+}                                                   // Смена выбранной кнопки на другую актинвую
+const handleDownKeySpace = (event) => {
+    if (event.code === 'Space' && !event.repeat && !isDown) {
+        event.preventDefault();
+        canvas.isDrawingMode = false;
+        isCursorMove = true;
+        canvas.toggleDragMode();
+        handleChangeActiveButton(buttonCursorMove)
+
+    }
+}                                                   // Нажатие на пробел
 const handleUpKeySpace = (event) => {
-    if (event.code === 'Space') {
+    if (event.code === 'Space' && !isDown) {
+        isCursorMove = false;
+        canvas.selection = true;
         event.preventDefault();
         canvas.toggleDragMode();
-        canvas.isDrawingMode = true;
-        buttonCursorMove.classList.remove('settings-panel__button-cursor-move_active');
-        buttonCursorMove.classList.remove('settings-panel__button-cursor-move_disabled');
-        isCursorMove = false;
+        handleChangeActiveButton();
         if(!isCursorMove) {
             document.body.addEventListener('keydown', handleDownKeySpace)
         }
     }
-}             // Отпускание пробела
+}                                                   // Отпускание пробела
 const changeGridSelection = (event) => {
     if(event.target.value === 'triangular') {
         canvas.setBackgroundColor({ source: pathTriangularGrid }, canvas.renderAll.bind(canvas));
     } else {
         canvas.setBackgroundColor({ source: pathUsualGrid }, canvas.renderAll.bind(canvas));
     }
-}          // Смена сетки
+}                                                   // Смена сетки
 const handleButtonCursorMoveClick = () => {
+    removeEvents();
     isCursorMove = !isCursorMove;
-    console.log(isCursorMove)
-    // if(isCursorMove){
-    //     document.body.removeEventListener('keydown', handleDownKeySpace);
-    // } else {
-    //     document.body.addEventListener('keydown', handleDownKeySpace);
-    // }
     canvas.toggleDragMode();
     canvas.isDrawingMode = false;
-}       // Перемещение с помощью кнопки
+}                                                   // Перемещение с помощью кнопки
 const handleSelectedButton = (event) => {
     let currentButton = event.target.closest('.tool-panel__item-button');
     if(currentButton === null || currentButton === buttonText){
@@ -344,23 +438,77 @@ const handleSelectedButton = (event) => {
         }
         selectedButton = currentButton;
     }
-
-}         // Подсветка выбранной кнопки
-const handleDraw = () => {
+}                                                   // Подсветка выбранной кнопки
+const handleDraw = () => {  
+    isCursorMove = false;
+    removeEvents();
     canvas.isDrawingMode = !canvas.isDrawingMode;
-}                        // Разрешение рисования
+}                                                   // Разрешение рисования
 const changeObjectSelection = (value) => {
     canvas.forEachObject(function (obj) {
         obj.selectable = value;
     });
     canvas.renderAll();
-}        // Функция разрешающая/запрещающая выбор элементов
+}                                                   // Функция разрешающая/запрещающая выбор элементов
+const handleUsualGrid = () => {
+    canvas.setBackgroundColor({
+        source: pathUsualGrid,
+        repeat: 'repeat',
+        scaleX: 1,
+        scaleY: 1
+    }, canvas.renderAll.bind(canvas));
+}                                                   // Функция, отображающая на холсте обычную сетку
+const handleNoGrid = () => {
+    canvas.setBackgroundColor(null, canvas.renderAll.bind(canvas))
+}                                                   // Функция, задающая режим без сетки
+const handleTriangularGrid = () => {
+    canvas.setBackgroundColor({
+        source: pathTriangularGrid,
+        repeat: 'repeat',
+        scaleX: 1,
+        scaleY: 1
+    }, canvas.renderAll.bind(canvas));
+}                                                   // Функция, отображающая треугольную сетку
 
-resizeCanvas();
+// ------------ // ------------
+
+
+
+// console.log('1', canvasCenter)
+
+// console.log(canvasCenterLeft, canvasCenterTop)
+handleUsualGrid();
 
 canvas.on('mouse:move', handleMouseMovement);         // Отображение чужих курсоров
 canvas.on('path:created',handleCreateNewLine);        // Добавление новой линии
 canvas.on('mouse:wheel', handleMouseWheel);           // Реагируем на масштабирование
+
+
+let info = document.getElementById('info');
+
+canvas.on({
+    'touch:gesture': function() {
+      var text = document.createTextNode(' Gesture ');
+      info.insertBefore(text, info.firstChild);
+    },
+    'touch:drag': function() {
+      var text = document.createTextNode(' Dragging ');
+      info.insertBefore(text, info.firstChild);
+    },
+    'touch:orientation': function() {
+      var text = document.createTextNode(' Orientation ');
+      info.insertBefore(text, info.firstChild);
+    },
+    'touch:shake': function() {
+      var text = document.createTextNode(' Shaking ');
+      info.insertBefore(text, info.firstChild);
+    },
+    'touch:longpress': function() {
+      var text = document.createTextNode(' Longpress ');
+      info.insertBefore(text, info.firstChild);
+    }
+  });
+
 
 // Получаем какие-либо данные от сервера
 
@@ -370,7 +518,11 @@ socket.on('new-picture', getNewPicture);              // получаем нов
 
 
 // Навешиваем слушатели событий на нужные нам элементы
+
 window.addEventListener('resize', handleChangeResizeWindow, false);
+window.addEventListener('mousemove', (event) => {
+    // console.log(event)
+})
 
 document.body.addEventListener('keydown', handleDownKeySpace);
 document.body.addEventListener('keyup', handleUpKeySpace);
@@ -471,208 +623,240 @@ const handleDrawSquare = (element) => {
 
 }
 
-let downFigureButton = false;
 
-// figureSelection.addEventListener('click', (event) => {
-//     console.log(canvas.__eventListeners)
-//     if(event.target.tagName.toLowerCase() !== 'button') return;
-//     downFigureButton = !downFigureButton;
-//     const value = event.target.dataset.value;
-//     const currentButton = event.target;
-//     if(downFigureButton) {
-//         canvas.isDrawingMode = false;
-//         currentButton.classList.add('settings-panel__button-figure_active');
-//         handleDrawSquare(value);
-//     } else {
-//         currentButton.classList.remove('settings-panel__button-figure_active');
-//         canvas.isDrawingMode = true;
-//     }
+buttonNoGrid.addEventListener('click', handleNoGrid);                        // Кнопка без сетки
+buttonUsualGrid.addEventListener('click', handleUsualGrid);                  // Кнопка обычной сетки
+buttonTriangularGrid.addEventListener('click', handleTriangularGrid);        // Кнопка треугольной сетки
+buttonCursorMove.addEventListener('click', handleButtonCursorMoveClick);     // Кнопка перемещения
+buttonFreeDrawing.addEventListener('click', handleDraw);                     // Кнопка свободного рисования
+buttonClearBoard.addEventListener('click', handleClearCanvas);               // Кнопка отчистки холста
+toolPanelList.addEventListener('click', handleSelectedButton);               // Панель, подсветка выбранной кнопки
+
+
+// text.on('object:selected',() => {
+//     console.log('text > selected')
 // })
-buttonCursorMove.addEventListener('click', handleButtonCursorMoveClick);
-buttonFreeDrawing.addEventListener('click', handleDraw);
-toolPanelList.addEventListener('click', handleSelectedButton);
-
-
-
-
-
-
-const buttonText = document.querySelector('.tool-panel__item-button-text'); // *
-const formTextTextarea = document.querySelector('.form-text__textarea');
-const modalTextWrapper = document.querySelector('.modal-text-wrapper');
-const formTextInput = document.querySelector('.form-text__input');
-const textSettings = document.querySelector('.text-settings');
-const formTextButtonSubmit = document.querySelector('.form-text__button-submit');
-
-const buttonFontSizeUp = document.querySelector('.text-settings__button-font-size-up');
-const buttonFontSizeDown = document.querySelector('.text-settings__button-font-size-down');
-const fontSizeValue = document.querySelector('.text-settings__font-size-value');
-const buttonOpenListFontFamily = document.querySelector('.text-settings__button-open-list');
-const fontFamilyListWrapper = document.querySelector('.text-settings__font-family-list_wrapper');
-const fontFamilyList = document.querySelector('.text-settings__font-family-list');
+// text.hiddenTextarea.focus();
+// text.on('changed', function(e) {
+//     console.log('text:changed', e);
+// });
 
 
 let selectedFontFamily = "Open Sans";
-let newFontSizeValue = "25";
+let newFontSizeValue = 40;
 
-fontFamilyList.addEventListener('click', (event) => {
-    selectedFontFamily = event.target.textContent;
-    formTextInput.style.fontFamily = selectedFontFamily;
+const buttonFontFamily = document.querySelector('.setting-item__button-font-family');
+const fontFamilyList = document.querySelector('.setting-item__font-family-list-wrapper');
+const fontSizeValue = document.querySelector('.setting-item__font-size-value');
+const fontColorInput = document.querySelector('.setting-item__input-font-color > input');
+const fontColorListWrapper = document.querySelector('.setting-item__font-color-list-wrapper');
+const currentListItemfontFamily = document.querySelector('.text-settings__font-item_active');
+
+fontColorInput.addEventListener('click', () => { fontColorListWrapper.classList.add('active') })
+
+fontColorInput.addEventListener('change', (e) => { canvas.getActiveObject().set("fill", e.target.value) })
+
+let selectedFontFamilyItem = currentListItemfontFamily;
+
+textSettings.addEventListener('click', (e) => {
+    switch(e.target.tagName) {
+        case "LI":
+            if(e.target.classList.contains('setting-item__font-family-item')) {
+                if(selectedFontFamilyItem === e.target) return;
+                selectedFontFamilyItem.classList.remove('text-settings__font-item_active');
+                selectedFontFamilyItem = e.target;
+                selectedFontFamilyItem.classList.add('text-settings__font-item_active');
+                selectedFontFamily = e.target.textContent;
+                buttonFontFamily.textContent = e.target.textContent;
+                canvas.getActiveObject().set('fontFamily', selectedFontFamily);
+            } else if(e.target.classList.contains('setting-item__font-style-item')) {
+                const text = canvas.getActiveObject();
+                switch(+e.target.dataset.item) {
+                    case 1: {
+                        const currentFontWeight = getStyle(text,'fontWeight')
+                        const newFontWeight = currentFontWeight === "bold" ? "normal" : "bold";
+                        e.target.classList.toggle('text-settings__font-item_active')
+                        canvas.getActiveObject().set("fontWeight", newFontWeight);
+                        canvas.renderAll();
+                        console.log('1');
+                        return;
+                    }
+                    case 2: {
+                        const currentFontStyle = getStyle(text,'fontStyle');
+                        const newFontStyle = currentFontStyle === "italic" ? "normal" : "italic";
+                        canvas.getActiveObject().set("fontStyle", newFontStyle);
+                        e.target.classList.toggle('text-settings__font-item_active')
+                        canvas.renderAll();
+                        console.log('2');
+                        return;
+                    }
+                    case 3: {
+                        const currentUnderline = getStyle(text,'underline');
+                        const newUnderline = !currentUnderline;
+                        canvas.getActiveObject().set("underline", newUnderline);
+                        e.target.classList.toggle('text-settings__font-item_active')
+                        canvas.renderAll();
+                        console.log('3');
+                        return;
+                    }
+                    case 4: {
+                        const currentLinethrough = getStyle(text,'linethrough');
+                        const newLinethrough = !currentLinethrough
+                        canvas.getActiveObject().set("linethrough", newLinethrough);
+                        e.target.classList.toggle('text-settings__font-item_active')
+                        canvas.renderAll();
+                        console.log('4');
+                        return;
+                    }
+                }
+            }
+            canvas.renderAll();
+        case 'BUTTON':
+            if(e.target.classList.contains('setting-item__button-font-size-down')){
+                newFontSizeValue-=2;
+                fontSizeValue.textContent = newFontSizeValue
+                canvas.getActiveObject().set('fontSize', newFontSizeValue)
+
+            } else if(e.target.classList.contains('setting-item__button-font-size-up')){
+                newFontSizeValue+=2;
+                fontSizeValue.textContent = newFontSizeValue
+                canvas.getActiveObject().set('fontSize', newFontSizeValue)
+            }
+            canvas.renderAll();
+        default:
+            return
+
+    }
+    
 })
 
-buttonOpenListFontFamily.addEventListener('click', () => {
-    fontFamilyListWrapper.classList.toggle('text-settings__font-family-list_wrapper_active');
+const getStyle = (object, styleName) => object[styleName];
+
+const onSelectionChanged = () => {
+    changeObjectSelection(false);
+    const obj = canvas.getActiveObject();
+    if (obj.selectionStart>-1) {
+      console.log(getStyle(obj,'fontSize'));
+    }
+}
+
+
+canvas.on('text:selection:changed', onSelectionChanged);
+
+const showTextEditPanel = () => {
+    buttonText.classList.add('settings-panel__button_active');
+    textSettings.classList.add('text-settings_active');
+}
+
+let pageX, pageY;
+
+document.addEventListener('mousemove', (e) => {
+    pageX = e.pageX;
+    pageY = e.pageY;
+}, false);
+
+
+
+buttonText.addEventListener('click', () => {
+    selectedButton.classList.remove('settings-panel__button_active');
+    selectedButton = buttonText;
+    removeEvents();
+    console.log('buttonText > click');
+    isDown = !isDown;
+    let isEditing = false;
+    let firstTouch = false;
+    // let currentEditText;
+
+    buttonText.classList.toggle('settings-panel__button_active');
+
+    if(isDown) {
+        changeObjectSelection(false);
+        canvas.isDrawingMode = false;
+        canvas.on('mouse:down', function(o) {
+            if(!isEditing) {
+                textSettings.classList.add('text-settings_active');
+                console.log('mouse:down');
+                const pointer = canvas.getPointer(o.e);
+                const text = new fabric.IText('Tap and Type', { 
+                    fontFamily: "Open Sans",
+                    fontSize: newFontSizeValue,
+                    left: pointer.x, 
+                    top: pointer.y,
+                    textDecoration: 'underline',
+                    editable: true,
+                })
+                console.log(text);
+                canvas.add(text);
+                canvas.setActiveObject(text);
+                text.enterEditing();
+                text.selectAll();
+                isEditing = text.isEditing;
+            }
+
+        });
+
+        canvas.on('mouse:up', function(o) {
+            console.log(o.target)
+            if(o.target !== null){
+                if(o.target.isType('i-text') && isEditing) {
+                    console.log('IT IS TEXT!!!! - 1');
+                }
+
+
+                else {
+                    if(!firstTouch) {
+                        firstTouch = true;
+                    } else {
+                        console.log('NOT TEXT!!!! - 1');
+                        hideTextEditPanel({removeEvents, changeObjectSelection});
+                        isDown = false;
+                        firstTouch = false;
+                    }
+                }
+            } else {
+                if(isEditing && !firstTouch) {
+                    console.log('IT IS TEXT!!!! - 2')
+                    firstTouch = true;
+
+                } else {
+                    console.log('NOT TEXT!!!! - 2');
+                    hideTextEditPanel({removeEvents, changeObjectSelection});
+                    isDown = false;
+                    isEditing = false;
+                }
+                
+            }
+            console.log('mouse:upedwedwedeqw34r234r34r234r')
+        });
+
+    } else {
+        canvas.isDrawingMode = false;
+        textSettings.classList.remove('text-settings_active');
+        changeObjectSelection(true);
+        removeEvents();
+    }
 })
 
-buttonFontSizeUp.addEventListener('click',() => {
-    const currentFontSize = Number(fontSizeValue.textContent);
-    newFontSizeValue = currentFontSize + 1;
-    fontSizeValue.textContent = newFontSizeValue + '';
-    formTextInput.style.fontSize = newFontSizeValue + 'px';
+canvas.on('text:editing:entered', (o) => {
+    console.log('text:editing:entered')
+    showTextEditPanel();
+    // console.log(o.target)
+    isDown = true;
+    document.body.addEventListener('keyup', (e) => {
+        if(e.code === 'Escape') {
+            hideTextEditPanel({removeEvents, changeObjectSelection});   
+            isDown = false;
+        }
+    }, { once: true })
+    canvas.on('mouse:down', function(o) {
+        console.log('mouse:up')
+        if(o.target === null ? true : !o.target.isType('i-text')){
+            hideTextEditPanel({removeEvents, changeObjectSelection});
+            isDown = false;
+        }
+    });
 });
 
 
-buttonFontSizeDown.addEventListener('click', () => {
-    const currentFontSize = Number(fontSizeValue.textContent);
-    const newFontSizeValue = currentFontSize - 1;
-    fontSizeValue.textContent = newFontSizeValue + '';
-    formTextInput.style.fontSize = newFontSizeValue + 'px';
-})
 
 
-let mouseCursorCoordinatesCanvas = {
-    x: 0,
-    y: 0,
-}
-
-formTextTextarea.addEventListener('input', () => {
-    formTextInput.value = formTextTextarea.value;
-
-})
-
-formTextButtonSubmit.addEventListener('click', (event) => {
-    event.preventDefault();
-    console.log(selectedFontFamily, newFontSizeValue)
-    const text = new fabric.Text(formTextInput.value, {
-        left: mouseCursorCoordinatesCanvas.x,
-        top: mouseCursorCoordinatesCanvas.y,
-        fill: 'black',
-        fontFamily: selectedFontFamily,
-        fontSize: newFontSizeValue
-    })
-    canvas.add(text);
-    canvas.renderAll();
-    mouseCursorCoordinatesCanvas = {
-        x: 0,
-        y: 0
-    };
-    formTextTextarea.value ='';
-    formTextInput.value = '';
-})
-
-let isDown = false
-
-buttonText.addEventListener('click', (event) => {
-    let origX, origY;
-    buttonText.classList.add('settings-panel__button_active');
-    textSettings.classList.toggle('text-settings_active');
-    console.log(isDown)
-    if(isDown) {
-        console.log('dddd')
-        buttonText.classList.remove('settings-panel__button_active');
-        canvas.off('mouse:down');
-        canvas.off('mouse:up');
-    }
-    changeObjectSelection(false);
-    console.log(canvas.__eventListeners);
-    removeEvents();
-    if(modalTextWrapper.classList.contains('modal-text-wrapper_active')) {
-        removeEvents();
-        modalTextWrapper.classList.remove('modal-text-wrapper_active');
-        return;
-    }
-
-    canvas.on('mouse:down', function(o) {
-        console.log('mouse:down');
-        const pointer = canvas.getPointer(o.e);
-        if(formTextTextarea.value !== ''){
-            canvas.renderAll();
-            modalTextWrapper.classList.remove('modal-text-wrapper_active');
-        } else {
-            mouseCursorCoordinatesCanvas = {
-                x: pointer.x,
-                y: pointer.y,
-            }
-            origX = o.pointer.x;
-            origY = o.pointer.y;
-            modalTextWrapper.style.left = origX + 'px';
-            modalTextWrapper.style.top = origY + 'px';
-            modalTextWrapper.classList.add('modal-text-wrapper_active');
-        }
-
-    });
-
-    canvas.on('mouse:up', function(o) {
-        console.log('mouse:up')
-        formTextInput.value = '';
-        formTextTextarea.value ='';
-        // isDown = false;
-        // removeEvents();
-    });
-    isDown = true;
-})
-
-
-
-
-
-
-
-
-const formFormulasWrapper = document.querySelector('.form-formulas__wrapper');
-const buttonShowModalWindowFormulas = document.querySelector('.button__show-modal-window-formulas');
-const buttonAddFormulas = document.querySelector('.button__add-formulas');
-const fieldFormFormulas = document.querySelector('.form-formulas__field');
-
-
-buttonAddFormulas.addEventListener('click', (event) => {
-    event.preventDefault();
-    formFormulasWrapper.classList.remove('form-formulas__wrapper_visible');
-})
-
-
-
-buttonShowModalWindowFormulas.addEventListener('click', (event) => {
-    let origX, origY;
-    if(isDown) {
-        formFormulasWrapper.classList.remove('form-formulas__wrapper_visible');
-        canvas.off('mouse:down');
-        canvas.off('mouse:up');
-    } else {
-        changeObjectSelection(false);
-        removeEvents();
-        canvas.on('mouse:down', function(o) {
-            console.log('mouse:down');
-            const pointer = canvas.getPointer(o.e);
-            // if(formulaTextarea.value !== ''){
-            //     canvas.renderAll();
-            //     formFormulasWrapper.classList.remove('form-formulas__wrapper_visible');
-            // } else {
-            mouseCursorCoordinatesCanvas = {
-                x: pointer.x,
-                y: pointer.y,
-            }
-            origX = o.pointer.x;
-            origY = o.pointer.y;
-            formFormulasWrapper.style.left = origX + 'px';
-            formFormulasWrapper.style.top = origY + 'px';
-            formFormulasWrapper.classList.add('form-formulas__wrapper_visible');
-            // }
-
-        });
-        canvas.on('mouse:up', function(o) {
-            console.log('mouse:up');
-        });
-    }
-    isDown = true;
-})
